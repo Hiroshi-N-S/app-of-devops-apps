@@ -79,7 +79,7 @@ spec:
           cmd:
             - jupyterhub-singleuser
             - --ServerApp.root_dir=/home/jovyan/work
-            - --config=/home/jovyan/.jupyter/code_server_config.py
+            - --config=/home/jovyan/.jupyter/server_proxy_config.py
           cpu:
             limit: 2.0
             guarantee: 1.0
