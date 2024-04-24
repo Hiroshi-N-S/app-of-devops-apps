@@ -1,0 +1,94 @@
+---
+# docs:
+#   - https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/
+#   - https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: notebook-jupyterhub
+  namespace: argo-cd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: devops
+  destination:
+    name: ''
+    namespace: devops
+    server: 'https://kubernetes.default.svc'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+  source:
+    path: ''
+    repoURL: 'https://jupyterhub.github.io/helm-chart/'
+    targetRevision: 3.1.0
+    chart: jupyterhub
+    helm:
+      values: |
+        hub:
+          config:
+            JupyterHub:
+              admin_access: true
+              authenticator_class: generic-oauth
+            GenericOAuthenticator:
+              client_id: jupyterhub
+              client_secret: YaOOyN815GeuDf8LW8YvAAnyCc26YsbL
+              authorize_url: http://mysticstorage.local:8080/realms/devops/protocol/openid-connect/auth
+              token_url: http://mysticstorage.local:8080/realms/devops/protocol/openid-connect/token
+              userdata_url: http://mysticstorage.local:8080/realms/devops/protocol/openid-connect/userinfo
+              scope:
+                - openid
+                - profile
+                - roles
+                - groups
+              username_claim: preferred_username
+              userdata_params:
+                state: state
+              claim_groups_key: groups
+              admin_groups:
+                - jupyterhub-admin
+              allowed_groups:
+                - jupyterhub-user
+          service:
+            type: ClusterIP
+          baseUrl: /notebooks
+
+        proxy:
+          service:
+            type: ClusterIP
+
+        ingress:
+          enabled: true
+          annotations:
+            kubernetes.io/ingress.class: nginx
+            nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+          ingressClassName: nginx
+          pathType: Prefix
+
+        singleuser:
+          image:
+            name: mysticstorage.local:8443/notebook/jupyter
+            tag: lab-4.0.2
+          defaultUrl: /lab
+          extraEnv:
+            TZ: Asia/Tokyo
+            SHELL: /usr/bin/bash
+          cmd:
+            - jupyterhub-singleuser
+            - --ServerApp.root_dir=/home/jovyan/work
+            - --config=/home/jovyan/.jupyter/code_server_config.py
+          cpu:
+            limit: 2.0
+            guarantee: 1.0
+          memory:
+            limit: 2G
+            guarantee: 1G
+          storage:
+            type: dynamic
+            capacity: 8Gi
+            homeMountPath: /home/jovyan/work
+            dynamic:
+              storageClass: synology-nfs
