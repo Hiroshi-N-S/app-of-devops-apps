@@ -1,0 +1,355 @@
+---
+# docs:
+#   - https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/
+#   - https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: devops-argo-workflows
+  namespace: argo-cd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: devops
+  destination:
+    name: ''
+    namespace: devops
+    server: 'https://kubernetes.default.svc'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+  source:
+    path: ''
+    repoURL: 'https://argoproj.github.io/argo-helm'
+    targetRevision: 0.39.9
+    chart: argo-workflows
+    helm:
+      values: |
+        workflow:
+          serviceAccount:
+            create: true
+            name: "argo-workflows"
+
+        server:
+          enabled: true
+          secure: true
+          extraArgs:
+            - --basehref
+            - "/argo/"
+          extraEnv:
+            - name: TZ
+              value: Asia/Tokyo
+            - name: BASE_HREF
+              value: "/argo/"
+          authModes:
+            - sso
+          serviceType: ClusterIP
+          # https://argo-workflows.readthedocs.io/en/latest/argo-server/#ingress
+          ingress:
+            enabled: true
+            annotations:
+              kubernetes.io/ingress.class: nginx
+              nginx.ingress.kubernetes.io/use-regex: "true"
+              nginx.ingress.kubernetes.io/rewrite-target: /$2
+              nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+              ingress.kubernetes.io/protocol: https # Traefik
+              nginx.ingress.kubernetes.io/backend-protocol: https # ingress-nginx
+            ingressClassName: nginx
+            paths:
+              - /argo(/|$)(.*)
+            pathType: Prefix
+          clusterWorkflowTemplates:
+            enabled: true
+            enableEditing: false
+          sso:
+            enabled: true
+            issuer: http://mysticstorage.local:8080/realms/devops
+            clientId:
+              name: devops-argo-server-sso
+              key: client-id
+            clientSecret:
+              name: devops-argo-server-sso
+              key: client-secret
+            redirectUrl: https://mint.local/argo/oauth2/callback
+            rbac:
+              enabled: true
+            scopes:
+              - openid
+              - profile
+              - roles
+              - groups
+            customGroupClaimName: groups
+            userInfoPath: /protocol/openid-connect/userinfo
+            insecureSkipVerify: true
+            filterGroupsRegex:
+              - "argo-workflows.*"
+
+        controller:
+          extraEnv:
+            - name: TZ
+              value: Asia/Tokyo
+          workflowNamespaces:
+            - devops
+          persistence:
+            archive: true
+            mysql:
+              host: devops-argo-workflows-mysql-server
+              port: 3306
+              database: argo
+              tableName: argo_workflows 
+              userNameSecret:
+                name: devops-argo-mysql-secret
+                key: MYSQL_USER
+              passwordSecret:
+                name: devops-argo-mysql-secret
+                key: MYSQL_PASSWORD
+
+        useStaticCredentials: true
+
+        artifactRepository:
+          # -- Archive the main container logs as an artifact
+          archiveLogs: true
+          # -- Store artifact in a S3-compliant object store
+          # @default -- See [values.yaml]
+          s3:
+            # Note the `key` attribute is not the actual secret, it's the PATH to
+            # the contents in the associated secret, as defined by the `name` attribute.
+            accessKeySecret:
+              name: minio-env-secret
+              key: AWS_ACCESS_KEY_ID
+            secretKeySecret:
+              name: minio-env-secret
+              key: AWS_SECRET_ACCESS_KEY
+            # insecure will disable TLS. Primarily used for minio installs not configured with TLS
+            insecure: true
+            bucket: argo-workflows
+            endpoint: mysticstorage.local:9000
+            # region:
+            # roleARN:
+            # useSDKCreds: true
+            # encryptionOptions:
+
+        extraObjects:
+          # --- --- --- --- --- --- --- --- ---
+          # secret for sso
+          #
+          - apiVersion: v1
+            kind: Secret
+            metadata:
+              name: devops-argo-server-sso
+            type: Opaque
+            stringData:
+              client-id: argo-workflows
+              client-secret: JPxJ7YzBYAsl8uelN86Wv3gS72OY2p3x
+
+          # --- --- --- --- --- --- --- --- ---
+          # RBAC
+          #   ref: https://argo-workflows.readthedocs.io/en/latest/service-account-secrets/
+
+          # --- --- --- --- --- --- ---
+          # operator role
+
+          - apiVersion: v1
+            kind: ServiceAccount
+            metadata:
+              name: operate-workflow-sa
+
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: Role
+            metadata:
+              name: operate-workflow-role
+            rules:
+              - apiGroups:
+                  - argoproj.io
+                verbs:
+                  - "*"
+                resources:
+                  - workflows
+                  - workflowtemplates
+                  - cronworkflows
+                  - clusterworkflowtemplates
+
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: RoleBinding
+            metadata:
+              name: operate-workflow-role-binding
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: Role
+              name: operate-workflow-role
+            subjects:
+              - kind: ServiceAccount
+                name: operate-workflow-sa
+                namespace: workflow
+
+          # --- --- --- --- --- --- ---
+          # readonly role
+
+          - apiVersion: v1
+            kind: ServiceAccount
+            metadata:
+              name: argo-workflows-readonly
+              annotations:
+                workflows.argoproj.io/rbac-rule: "'argo-workflows-readonly' in groups"
+                workflows.argoproj.io/rbac-rule-precedence: "0"
+
+          - apiVersion: v1
+            kind: Secret
+            metadata:
+              name: argo-workflows-readonly.service-account-token
+              annotations:
+                kubernetes.io/service-account.name: argo-workflows-readonly
+            type: kubernetes.io/service-account-token
+
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: ClusterRoleBinding
+            metadata:
+              name: argo-workflows-readonly-server-cluster-template
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: ClusterRole
+              name: devops-argo-workflows-view
+            subjects:
+              - kind: ServiceAccount
+                name: argo-workflows-readonly
+                namespace: workflow
+
+          # --- --- --- --- --- --- ---
+          # admin role
+
+          - apiVersion: v1
+            kind: ServiceAccount
+            metadata:
+              name: argo-workflows-admin
+              annotations:
+                workflows.argoproj.io/rbac-rule: "'argo-workflows-admin' in groups"
+                workflows.argoproj.io/rbac-rule-precedence: "1"
+
+          - apiVersion: v1
+            kind: Secret
+            metadata:
+              name: argo-workflows-admin.service-account-token
+              annotations:
+                kubernetes.io/service-account.name: argo-workflows-admin
+            type: kubernetes.io/service-account-token
+
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: ClusterRoleBinding
+            metadata:
+              name: argo-workflows-admin-server
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: ClusterRole
+              name: devops-argo-workflows-admin
+            subjects:
+              - kind: ServiceAccount
+                name: argo-workflows-admin
+                namespace: workflow
+
+          # --- --- --- --- --- --- --- --- ---
+          # MySQL Server
+          #
+          - apiVersion: v1
+            kind: Secret
+            metadata:
+              name: devops-argo-mysql-secret
+            type: Opaque
+            stringData:
+              MYSQL_DATABASE: argo
+              MYSQL_USER: argo
+              MYSQL_PASSWORD: Argo-Workflows
+
+          - apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: devops-mysql-cnf-mp
+            data:
+              mysql.cnf: ''
+
+          - apiVersion: v1
+            kind: Service
+            metadata:
+              name: devops-argo-workflows-mysql-server
+              labels:
+                app.kubernetes.io/component: server
+                app.kubernetes.io/instance: mysql-server
+            spec:
+              selector:
+                app.kubernetes.io/component: server
+                app.kubernetes.io/instance: mysql-server
+              type: ClusterIP
+              ports:
+                - name: mysql
+                  port: 3306
+                  protocol: TCP
+                  targetPort: mysql
+                  nodePort: null
+
+          - apiVersion: apps/v1
+            kind: StatefulSet
+            metadata:
+              name: devops-argo-workflows-mysql-server
+              labels:
+                app.kubernetes.io/component: server
+                app.kubernetes.io/instance: mysql-server
+            spec:
+              serviceName: mysql-server
+              replicas: 1
+              updateStrategy:
+                type: RollingUpdate
+              selector:
+                matchLabels:
+                  app.kubernetes.io/component: server
+                  app.kubernetes.io/instance: mysql-server
+              template:
+                metadata:
+                  labels:
+                    app.kubernetes.io/component: server
+                    app.kubernetes.io/instance: mysql-server
+                spec:
+                  containers:
+                    - name: mysql
+                      image: amd64/mysql:8.0.35-bullseye
+                      args:
+                        - --character-set-server=utf8mb4
+                        - --collation-server=utf8mb4_unicode_ci
+                      env:
+                        - name: MYSQL_RANDOM_ROOT_PASSWORD
+                          value: "yes"
+                      envFrom:
+                        - secretRef:
+                            name: devops-argo-mysql-secret
+                      ports:
+                        - name: mysql
+                          containerPort: 3306
+                      volumeMounts:
+                        - name: mysql-cnf-vol
+                          mountPath: /etc/mysql/conf.d/mysql.cnf
+                          subPath: mysql.cnf
+                        - name: mysql-data
+                          mountPath: /var/lib/mysql
+                  securityContext:
+                    runAsNonRoot: true
+                    runAsUser: 1000
+                    runAsGroup: 2000
+                    fsGroup: 3000
+                  volumes:
+                    - name: mysql-cnf-vol
+                      configMap:
+                        name: devops-mysql-cnf-mp
+                        items:
+                          - key: mysql.cnf
+                            path: mysql.cnf
+              volumeClaimTemplates:
+                - metadata:
+                    name: mysql-data
+                  spec:
+                    resources:
+                      requests:
+                        storage: 4Gi
+                    accessModes:
+                      - ReadWriteOnce
+                    storageClassName: synology-nfs
