@@ -1,0 +1,28 @@
+---
+# docs:
+#   - https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/
+#   - https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-devops-apps
+  namespace: argo-cd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: devops
+  destination:
+    name: ''
+    namespace: devops
+    server: 'https://kubernetes.default.svc'
+  source:
+    path: apps
+    repoURL: 'https://github.com/Hiroshi-N-S/app-of-devops-apps.git'
+    targetRevision: main
+  sources: []
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
