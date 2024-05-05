@@ -1,0 +1,52 @@
+---
+# docs:
+#   - https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/
+#   - https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: devops-argo-events
+  namespace: argo-cd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: devops
+  destination:
+    name: ''
+    namespace: devops
+    server: 'https://kubernetes.default.svc'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+  source:
+    path: ''
+    repoURL: 'https://argoproj.github.io/argo-helm'
+    targetRevision: 2.4.4
+    chart: argo-events
+    helm:
+      values: |
+        configs:
+          jetstream:
+            versions:
+              - version: '2.9.25'
+                natsImage: nats:2.9.25-linux
+                metricsExporterImage: natsio/prometheus-nats-exporter:0.15.0
+                configReloaderImage: natsio/nats-server-config-reloader:0.14.2
+                startCommand: /nats-server
+
+        extraObjects:
+          - apiVersion: argoproj.io/v1alpha1
+            kind: EventBus
+            metadata:
+              name: default
+            spec:
+              jetstream:
+                version: '2.9.25'
+                replicas: 3
+                persistence:
+                  storageClassName: synology-nfs
+                  accessMode: ReadWriteOnce
+                  volumeSize: 8Gi
