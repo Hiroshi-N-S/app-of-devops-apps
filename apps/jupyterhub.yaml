@@ -72,14 +72,14 @@ spec:
           image:
             name: mysticstorage.local:8443/notebook/jupyter
             tag: lab-4.0.2
+            pullPolicy: Always
           defaultUrl: /lab
           extraEnv:
             TZ: Asia/Tokyo
             SHELL: /usr/bin/bash
           cmd:
-            - jupyterhub-singleuser
-            - --ServerApp.root_dir=/home/jovyan/work
-            - --config=/home/jovyan/.jupyter/server_proxy_config.py
+            - bash
+            - entrypoint.sh
           cpu:
             limit: 2.0
             guarantee: 1.0
