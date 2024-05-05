@@ -45,7 +45,7 @@ spec:
             spec:
               jetstream:
                 version: '2.9.25'
-                replicas: 3
+                replicas: 1
                 persistence:
                   storageClassName: synology-nfs
                   accessMode: ReadWriteOnce
