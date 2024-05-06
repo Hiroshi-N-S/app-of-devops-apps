@@ -37,6 +37,7 @@ ARG GID=1000
 ENV JUPYTER_VER=4.0.2
 ENV JUPYTER_SERVER_PROXY_VER=4.1.2
 ENV CODE_SERVER_VER=4.23.1
+ENV NODE_RED_VER=3.1.9
 
 ENV GO_VERSION=go1.21.5
 
@@ -75,9 +76,9 @@ RUN set -eux ;\
       # clean cache
       rm -rf ~/.cache
 
-COPY --chown=${UID}:${GID} server_proxy_config.py /home/${USERNAME}/.jupyter/
+COPY --chown=${UID}:${GID} --chmod=644 entrypoint.sh /home/${USERNAME}/
+COPY --chown=${UID}:${GID} --chmod=644 server_proxy_config.py /home/${USERNAME}/.jupyter/
 ENV PATH=$PATH:/home/${USERNAME}/node_modules/.bin
-
 RUN set -eux ;\
       # --- --- --- --- --- --- --- --- ---
       # install nodejs and npm.
@@ -92,16 +93,16 @@ RUN set -eux ;\
       # --- --- --- --- --- --- --- --- ---
       # ref: https://coder.com/docs/code-server/latest/install#npm
       npm install --unsafe-perm code-server@${CODE_SERVER_VER} ;\
-      mkdir -p ~/.config/code-server ;\
       sudo mkdir -p /etc/code-server ;\
       sudo chown ${UID}:${GID} /etc/code-server ;\
-      # edit config.yaml for https
-      echo 'bind-addr: 127.0.0.1:443' >> ~/.config/code-server/config.yaml ;\
-      echo 'cert: false' >> ~/.config/code-server/config.yaml ;\
       # get icons
       wget https://code.visualstudio.com/assets/branding/visual-studio-code-icons.zip ;\
       unzip visual-studio-code-icons.zip -d /etc/code-server/ ;\
       rm -rf visual-studio-code-icons.zip ;\
+      # --- --- --- --- --- --- --- --- ---
+      # install Node-RED.
+      # --- --- --- --- --- --- --- --- ---
+      npm install --unsafe-perm node-red@${NODE_RED_VER} ;\
       # clean cache
       rm -rf ~/.cache
 

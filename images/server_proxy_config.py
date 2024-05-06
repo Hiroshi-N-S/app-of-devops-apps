@@ -6,7 +6,7 @@ c = get_config()
 c.ServerProxy.servers = {
   'code-server': {
     'command': [
-      'code-server',
+      '/home/jovyan/node_modules/.bin/code-server',
         '--auth=none',
         '--disable-telemetry',
         '--disable-update-check',
@@ -25,5 +25,20 @@ c.ServerProxy.servers = {
       'title': 'Visual Studio Code',
     },
     'unix_socket': '/tmp/code-server',
+  },
+  'node-red': {
+    'command': [
+      '/home/jovyan/node_modules/.bin/node-red',
+        '--port'    , '{port}',
+        '--userDir' , '/home/jovyan/work/.node-red',
+        '--define'  , 'contextStorage.default.module="localfilesystem"',
+    ],
+    'timeout': 20,
+    'launcher_entry': {
+      'launcher_entry': True,
+      'icon_path': '/home/jovyan/node_modules/@node-red/editor-client/public/red/images/node-red-256.svg',
+      'title': 'Node-RED',
+    },
+    'port': 1880,
   }
 }
