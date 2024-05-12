@@ -47,14 +47,25 @@ ENV http_proxy=
 ENV https_proxy=
 ENV no_proxy=
 
+ENV LC_ALL=en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US.UTF-8
+
 USER root
 WORKDIR /root
 RUN set -eux ;\
       apt update && apt install -y \
+        locales \
         sudo \
       ;\
+      # change default locale
+      echo 'LANG=en_US LC_ALL=en_US.UTF-8' > /etc/default/locale ;\
+      echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen ;\
+      locale-gen ;\
+      # add a user.
       groupadd -g ${GID} ${GROUPNAME} ;\
       useradd -m -s /bin/bash -u ${UID} -g ${GID} ${USERNAME} ;\
+      # add the user to sudoers.
       echo "${USERNAME} ALL=(ALL:ALL) NOPASSWD:ALL" >> user ;\
       mkdir -p /etc/sudoers.d ;\
       mv user /etc/sudoers.d
