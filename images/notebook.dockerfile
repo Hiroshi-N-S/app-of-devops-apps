@@ -41,6 +41,10 @@ ENV NODE_RED_VER=3.1.9
 
 ENV GO_VERSION=go1.21.5
 
+ENV AWS_ENDPOINT_URL=http://mysticstorage.local:9000
+ENV AWS_ACCESS_KEY_ID=tnBwNmT7I4UZQaZR0EDv
+ENV AWS_SECRET_ACCESS_KEY=JTYD9Qaz0h72greLoHOaWY0FC8TOR7WvC2Au6pCL
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 ENV http_proxy=
@@ -70,10 +74,20 @@ RUN set -eux ;\
       mkdir -p /etc/sudoers.d ;\
       mv user /etc/sudoers.d
 
-ENV PATH=$PATH:/home/${USERNAME}/.local/bin
-
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
+RUN set -eux ;\
+      # --- --- --- --- --- --- --- --- ---
+      # install utilities.
+      # --- --- --- --- --- --- --- --- ---
+      # install aws-cli
+      # curl "https://awscli.amazonaws.com/awscli-exe-linux-${TARGETARCH}.zip" -o "awscliv2.zip" ;\
+      curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" ;\
+      unzip awscliv2.zip ;\
+      sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update ;\
+      rm -rf aws awscliv2.zip
+
+ENV PATH=$PATH:/home/${USERNAME}/.local/bin
 RUN set -eux ;\
       # --- --- --- --- --- --- --- --- ---
       # install Jupyter.
